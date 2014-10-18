@@ -190,6 +190,80 @@ class PlayerAI(BaseAI):
 
         return action
 
+    def alphabeta_search_0ct16_1106(self, grid, d, cutoff_test=False):
+
+        """
+        Search game to determine best action; use alpha-beta pruning.
+		This version cuts off search and uses an evaluation function.
+		"""
+        #player maximize the possible score from eval_function
+        def max_value(currGrid, alpha, beta, depth):  # CURRDRIP is the grid waiting for player to move, wanting the max score
+            bestScore = alpha
+            if depth > d or not currGrid.canMove():
+                self.eval_fn1(currGrid)
+                return self.eval
+            for move in currGrid.getAvailableMoves():  # move is a integer: vecIndex = [UP, DOWN, LEFT, RIGHT] = range(4)
+                succGrid = currGrid.clone()
+                succGrid.move(move)  # succGrid is the grids that have been moved in different conditions
+                v = min_value(succGrid, bestScore, beta, depth + 1)  # we want to choose the max value condition to actually move
+                if v >= bestScore:
+                    bestScore = v
+                if bestScore > beta:
+                    return beta
+
+        def min_value(currGrid, alpha, beta, depth):  # special min_value function compare to classic minmax algo.
+            """
+            We select the "best" add tile place based on eval function for current grid after adding tile.
+            We do not deepen the depth for computer, only for next round of move
+            """
+            if depth > d or not currGrid.canMove():
+                self.eval_fn1(currGrid)
+                return self.eval
+            candiToContinue = None
+
+            candiInserts = []
+            for possibleValue in [2, 4]:
+                tmp = {}
+                for place in currGrid.getAvailableCells(): # [(x,y),()...]
+                    succGrid = currGrid.clone()
+                    succGrid.insertTile(place, int(possibleValue))
+                    value = self.smoothness(succGrid) + self.monotonicity(succGrid)
+                    tmp[value] = succGrid
+                maxKey = max(k for k, v in tmp.iteritems())
+                candiInserts.append(tmp[maxKey])
+
+            bestScore = beta  # beta
+            for twoCandi in candiInserts:
+                candiToContinue = twoCandi.clone()
+                value = max_value(candiToContinue, alpha, bestScore, depth+1)
+                if value < bestScore:
+                    bestScore = value
+                if bestScore < alpha:
+                    return alpha
+
+        # Body of alphabeta_search starts here:
+        # The default test cuts off at depth d or at a terminal state
+        currGrid = grid.clone()
+        depth = 0
+        successer = []
+        for move in currGrid.getAvailableMoves():
+            #if self.isBigTileInCorner(currGrid) and self.willMoveLetBiggestTileOffCorner(move, currGrid) and len(currGrid.getAvailableMoves()) > 1:
+             #   print 'assume bad: ', move
+             #   continue
+            succGrid = currGrid.clone()
+            succGrid.move(move)
+            successer.append((move, succGrid))
+
+        action = -1
+        value = -infinity
+        for candi in successer:
+            if min_value(candi[1], -infinity, infinity, depth) > value:  # grid given as parameter for min_value function should be moved by player, one min_value returns the worst condition with computer adding a tile, we want to choose the least worst parent condition
+                action = candi[0]
+
+        return action
+
+
+
     # The return value of getMove() in PlayerAI is an integer indicating the direction (UP, DOWN, LEFT, RIGHT) = (0,1,2,3)
     def getMove(self, grid):
         emptyCellNum = len(grid.getAvailableCells())
