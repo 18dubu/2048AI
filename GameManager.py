@@ -56,7 +56,7 @@ class GameManager:
 		maxTile = 0
 
 		# set init alarm
-		self.lastTime = time.time()
+		self.lastTime = time.clock()#time.time()
 
 		# check game over conditions
 		while not self.isGameOver() and not self.over:
@@ -95,7 +95,7 @@ class GameManager:
 				self.displayer.display(self.grid)
 
 			# once you exceeds the time limit, previous action will be your last action
-			self.updateAlarm(time.time())
+			self.updateAlarm(time.clock()) #time.time()
 			turn = 1 - turn
 		print maxTile
 

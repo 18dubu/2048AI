@@ -32,7 +32,7 @@ class PlayerAI(BaseAI):
                             targetCellValue = log2(grid.map[x][y + 1])
                             processed = 1
                         if processed != 0:
-                            smoothness -= abs(currCellValue - targetCellValue)
+                            smoothness -= abs(currCellValue - targetCellValue) #abs(currCellValue - targetCellValue)
         return smoothness
 
     def monotonicity(self, grid):  # concept from https://github.com/ov3y/2048-AI/blob/master/js/grid.js monotonicity2 function
@@ -139,6 +139,15 @@ class PlayerAI(BaseAI):
 
         return maxTileLocation
 
+    def getRankedValueLocationDir(self, grid):
+        dir = {}
+        maxTile = 0
+        for x in xrange(grid.size):
+            for y in xrange(grid.size):
+                if not grid.canInsert((x,y)):
+                    dir[grid.map[x][y]] = (x,y)
+        return dir
+
     def isBigTileInCorner(self, grid):
         currLocaList = self.getMaxTileLocation(grid)
         inCorner = 0
@@ -153,11 +162,56 @@ class PlayerAI(BaseAI):
 
     def willMoveLetBiggestTileOffCorner(self, move, grid):  # assume the biggest tile is in one of the corners
         gridCopy = grid.clone()
+        preLoc = self.getMaxTileLocation(grid)
         gridCopy.move(move)
-        if self.isBigTileInCorner(gridCopy):
+        currLoc = self.getMaxTileLocation(gridCopy)
+        if self.isBigTileInCorner(gridCopy) or preLoc != currLoc:
             return False
         else:
             return True
+
+    def getAverageScorePerGrid(self,grid):
+        total = 0
+        occuCellNum = 0
+        for x in xrange(grid.size):
+            for y in xrange(grid.size):
+                if not grid.canInsert((x,y)):
+                    total += grid.map[x][y]
+                    occuCellNum += 1
+        if occuCellNum ==0:
+            return 0
+        else:
+            return float(total)/occuCellNum
+
+    def getAverageScorePerGrid_tail(self,grid):
+        numberIncluded = 12
+        rankDir = self.getRankedValueLocationDir(grid)
+        total = 0
+        occuCellNum = 0
+        i=0
+        for key in sorted(rankDir):
+            i += 1
+            if i <= numberIncluded:
+                if key != 0:
+                    total += key
+                    occuCellNum += 1
+        if occuCellNum == 0:
+            return 0
+        else:
+            return float(total)/occuCellNum
+
+    def biggerTilesOnBoarderPreference(self,grid):
+        numberIncluded = 4
+        rankDir = self.getRankedValueLocationDir(grid)
+        total = 0
+        i=0
+        for key in reversed(sorted(rankDir)):
+            i += 1
+            if i <= numberIncluded:
+                if key != 0:
+                    if rankDir[key][0] == 0 or rankDir[key][0] == grid.size -1 or rankDir[key][1] == 0 or rankDir[key][1] == grid.size -1:
+                        total += key
+        return float(total)
 
     def island(self, grid):
         return random.randrange(0, 1)
@@ -172,17 +226,21 @@ class PlayerAI(BaseAI):
         emptyCellLength = len(grid.getAvailableCells())
         if emptyCellLength == 0:
             emptyCellLength = 1
-        biggestTileInCornerPenalty = -100  # NEGATIVE
-        smoothWeight = 0.5
-        mono2Weight = 5.0
-        emptyWeight = 2.7
-        maxWeight = 1.0
+        biggestTileInCornerPenalty = -100000000000  # NEGATIVE
+        smoothWeight = 6.0
+        mono2Weight = 17.0 #15.0
+        emptyWeight = 2.0#1
+        maxWeight = 1.0#2.0
+        averWeight = 2
+        boarderWeight = 0.5
 
         self.eval = self.smoothness(grid) * smoothWeight \
                     + self.monotonicity2(grid) * mono2Weight \
                     + grid.getMaxTile() * maxWeight \
-                    + log2(emptyCellLength) * emptyWeight \
-                    + (1-self.isBigTileInCorner(grid)) * biggestTileInCornerPenalty
+                    + emptyCellLength * emptyWeight+1 \
+                    + self.getAverageScorePerGrid_tail(grid) * averWeight \
+                    + (1-self.isBigTileInCorner(grid)) * biggestTileInCornerPenalty \
+                    + self.biggerTilesOnBoarderPreference(grid) * boarderWeight
         #+ (1 - self.isBigTileInCorner(grid)) * biggestTileInCornerPenalty \
         #
         return self.eval
@@ -262,6 +320,8 @@ class PlayerAI(BaseAI):
             if errorLog:
                 print "valid moves: ", grid.getAvailableMoves()
             for move in grid.getAvailableMoves():
+                #if self.isBigTileInCorner(grid) and self.willMoveLetBiggestTileOffCorner(move, grid) and len(grid.getAvailableMoves()) > 1:
+                    #continue
                 newGrid = grid.clone()
                 if 1:
                     newGrid.move(move)
@@ -296,13 +356,13 @@ class PlayerAI(BaseAI):
                 print 'return from place9:'
                 print "!!!!!!!!!!!!!!!!!!!end of new search: ",depth, alpha, beta, isPlayer, positions
                 print {'move': bestMove, 'score': bestScore, 'positions': positions}
-            if bestMove == -1 and depth>=1 and not errorLog:
+            if bestMove == -1 and not errorLog:
                 #print "uncommon return bestMove==-1, activate errorLog: "
                 #self.search(args[0],args[1],args[2],args[3],args[4],args[5],args[6])
                 possList = grid.getAvailableMoves()
                 if len(possList)>0:
                     bestMove = possList[randint(0,len(possList)-1)]
-                else:
+                elif 0:
                     from Displayer import Displayer
                     self.displayer = Displayer()
                     print "This grid returns no available move: "
@@ -357,9 +417,10 @@ class PlayerAI(BaseAI):
         while 1:
             start = time.clock()
             newBest = self.search(grid, depth, -infinity, infinity, 0, True)
-            if (time.clock()-start > 1):
+            end = time.clock()
+            if (end-start > 0.15):
                 print "time usage per step: ", time.clock()-start
-                print 'depth', depth
+                #print 'depth', depth
                 break
             if newBest['move'] == -1:
                 print 'break ahead'
@@ -372,23 +433,27 @@ class PlayerAI(BaseAI):
 
     # The return value of getMove() in PlayerAI is an integer indicating the direction (UP, DOWN, LEFT, RIGHT) = (0,1,2,3)
     def getMove(self, grid):
+
+        availableMethods ={'c':'categoricalDeep',"i":'iterativeDeep'}
+        method = availableMethods['c']
+
         emptyCellNum = len(grid.getAvailableCells())
-        #gridCopy = grid.clone()
-        #preInCorner = self.isBigTileInCorner(gridCopy)
-        maxD = int((16 - emptyCellNum) * 0.5)
 
         #self.move = int(self.alphabeta_search(grid, 6))
-        #self.move = int(self.iterativeDeep(grid)['move'])
-        depth = 2
-        if emptyCellNum < 3:
-            depth=3
-        self.move = int(self.search(grid,depth,-infinity,infinity,0,True)['move'])
+        if method == 'iterativeDeep':
+            self.move = int(self.iterativeDeep(grid)['move'])
+
+        if method == 'categoricalDeep':
+            depth = 1
+            if emptyCellNum < 6:
+                depth = 3
+            if emptyCellNum < 3:
+                depth = 3
+            if emptyCellNum <= 1:
+                depth = 3
+            self.move = int(self.search(grid,depth,-infinity,infinity,0,True)['move'])
 
         print self.move
-        #gridCopy.move(self.move)
-        #postInCorner = self.isBigTileInCorner(gridCopy)
-        #if not postInCorner and preInCorner:
-        #    print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~WTF~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
         if self.move != -1:
             return self.move
         else:
